@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "axios": "^1.13.2",
+    "express": "^5.2.1"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "nodemon src/app.js",
+    "dev": "nodemon src/app.js"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
