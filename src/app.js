@@ -12,6 +12,7 @@ const port=8000
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const filepath=path.join(os.tmpdir(),'file.py')
+const directoryPath=os.tmpdir()
 
 
 
@@ -28,7 +29,6 @@ app.post('/exec',async (req,res)=>{
     
     try{
         await fs.writeFile(filepath,req.body.code,"utf-8")
-        await fs.writeFile('example.py',req.body.code,"utf-8")
         console.log("file written")
     }catch(e){
         console.log("error while writing the file " + e)
@@ -40,7 +40,14 @@ app.post('/exec',async (req,res)=>{
     let stderr=''    
 
 
-    const child = spawn("python", [filepath])
+    const child = spawn("docker",[
+        "run",
+        "--rm",
+        `-v ${directoryPath}:/code`,
+        "python-runner",
+        "file.py"
+
+    ] )
 
     const timer= setTimeout(()=>{
         if(finished) return 
