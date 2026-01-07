@@ -4,7 +4,7 @@ import express from "express"
 import path from "path"
 import { fileURLToPath } from "url"
 import { spawn } from "child_process"
-import { error } from "console"
+
 
 const app=express()
 const port=8000
@@ -12,7 +12,6 @@ const port=8000
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const filepath=path.join(os.tmpdir(),'file.py')
-
 
 
 
@@ -25,36 +24,87 @@ app.get('/exec',(req,res)=>{
 })
 
 
-app.post('/exec',(req,res)=>{
+app.post('/exec',async (req,res)=>{
     
     try{
-        fs.writeFile(filepath,req.body.code,"utf-8")
-        fs.writeFile('example.py',req.body.code,"utf-8")
+        await fs.writeFile(filepath,req.body.code,"utf-8")
+        await fs.writeFile('example.py',req.body.code,"utf-8")
         console.log("file written")
     }catch(e){
         console.log("error while writing the file " + e)
     }
+    
+    let finished=false
+    let timeout=false
+    let stdout=''
+    let stderr=''    
+
 
     const child = spawn("python", [filepath])
 
+    const timer= setTimeout(()=>{
+        if(finished) return 
+        child.kill();
+        console.log("child killed")
+        finished=true
+        timeout=true
+        console.log("time limit exceeded")
+        console.log(stdout)
+        if(!res.headersSent){
+        res.json({
+        status: "TIME_LIMIT_EXCEEDED",
+        stdout,
+         stderr
+    })
+}
+
+    },10000)
+
+    
     child.stdout.on('data',(data)=>{
-        console.log('stdout: '+data.toString())
+        stdout+=data.toString()
     })
 
     child.stderr.on('data',(error)=>{
-        console.log('error: '+error.toString())
+        stderr+=error.toString()
     })
 
     child.on('close',(code)=>{
+        if(finished) return
         console.log("process exited with code : "+code)
+        finished=true 
+        clearTimeout(timer)
+        if(code===0){
+            console.log("running before success")
+            if(!res.headersSent){
+            res.json({
+            status: "SUCCESS",
+            stdout,
+            stderr
+        })}
+        console.log("resposnse sent")
+        }else{
+            if(!res.headersSent){
+            res.json({
+            status: "TERMINATED",
+            stdout,
+            stderr
+        })}
+        }
+        
     })
 
     child.on('error',(err)=>{
         console.log("error occured: "+err.message)
+        if(!res.headersSent){
+        res.json({
+            status: "TERMINATED",
+            stdout,
+            stderr
+        })}
     })
-
-
-
+    
+    
 })
 
 app.listen(port,()=>{

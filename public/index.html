@@ -16,6 +16,13 @@
         const el = document.getElementById('code')
         function run(){
             axios.post('/exec',{code:el.value})
+            .then((msg)=>{
+                console.log(msg.data.status)
+                console.log(msg.data.stdout)
+            })
+            .catch((err)=>{
+                console.log(err)
+            })
         }
         
 

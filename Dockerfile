@@ -1,10 +1,5 @@
-FROM node:22
+FROM python:3.14-slim
 
-WORKDIR /app
+WORKDIR /code
 
-COPY package*.json ./
-RUN npm install
-
-COPY . .
-
-CMD ["npm", "start"]
+CMD ["python"]
