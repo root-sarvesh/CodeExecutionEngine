@@ -43,8 +43,10 @@ app.post('/exec',async (req,res)=>{
     const child = spawn("docker",[
         "run",
         "--rm",
-        `-v ${directoryPath}:/code`,
+        `-v`,
+        `${directoryPath}:/code`,
         "python-runner",
+        "python",
         "file.py"
 
     ] )
@@ -89,7 +91,7 @@ app.post('/exec',async (req,res)=>{
             stdout,
             stderr
         })}
-        console.log("resposnse sent")
+        console.log("response sent")
         }else{
             if(!res.headersSent){
             res.json({

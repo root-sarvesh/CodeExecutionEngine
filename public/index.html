@@ -7,7 +7,7 @@
 </head>
 <body>
 
-    <textarea name="" id="code">hello world</textarea>
+    <textarea name="" id="code"></textarea>
     <button onclick="run()">run</button>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -17,8 +17,10 @@
         function run(){
             axios.post('/exec',{code:el.value})
             .then((msg)=>{
+                console.log(msg.data)
                 console.log(msg.data.status)
-                console.log(msg.data.stdout)
+                console.log("output: "+ msg.data.stdout)
+                console.log("err: "+msg.data.stderr)
             })
             .catch((err)=>{
                 console.log(err)
