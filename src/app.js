@@ -2,6 +2,7 @@ import os from "os"
 import fs from "fs/promises"
 import express from "express"
 import path from "path"
+import crypto from "crypto"
 import { fileURLToPath } from "url"
 import { spawn } from "child_process"
 
@@ -9,13 +10,13 @@ import { spawn } from "child_process"
 const app=express()
 const port=8000
 
+//paths
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const filepath=path.join(os.tmpdir(),'file.py')
 const directoryPath=os.tmpdir()
 
 
-
+//middlewares
 app.use(express.json())
 app.use(express.urlencoded({extended: true}))
 app.use(express.static(path.join(__dirname,'../public')))
@@ -27,11 +28,24 @@ app.get('/exec',(req,res)=>{
 
 app.post('/exec',async (req,res)=>{
     
+    const uniqueId = crypto.randomUUID()
+    const tempDir = path.join(os.tmpdir(),`exec-${uniqueId}`)
+
+    try{
+        await fs.mkdir(tempDir)
+    }catch(e){
+        return res.status(500).json({status: "Directory creation failed"})
+    }
+
+    const filepath = path.join(tempDir,'file.py')
+
     try{
         await fs.writeFile(filepath,req.body.code,"utf-8")
         console.log("file written")
     }catch(e){
+        await cleanUp()
         console.log("error while writing the file " + e)
+        return res.status(500).json({status: "File creation failed"})
     }
     
     let finished=false
@@ -44,18 +58,20 @@ app.post('/exec',async (req,res)=>{
         "run",
         "--rm",
         `-v`,
-        `${directoryPath}:/code`,
+        `${tempDir}:/code`,
         "python-runner",
         "python",
-        "file.py"
+        "/code/file.py"
 
     ] )
 
-    const timer= setTimeout(()=>{
+    const timer= setTimeout(async ()=>{
         if(finished) return 
-        child.kill();
-        console.log("child killed")
         finished=true
+        child.kill("SIGKILL");
+        await cleanUp()
+        clearTimeout(timer)
+        console.log("child killed")
         timeout=true
         console.log("time limit exceeded")
         console.log(stdout)
@@ -78,11 +94,12 @@ app.post('/exec',async (req,res)=>{
         stderr+=error.toString()
     })
 
-    child.on('close',(code)=>{
+    child.on('close',async (code)=>{
         if(finished) return
         console.log("process exited with code : "+code)
         finished=true 
         clearTimeout(timer)
+        await cleanUp()
         if(code===0){
             console.log("running before success")
             if(!res.headersSent){
@@ -103,8 +120,12 @@ app.post('/exec',async (req,res)=>{
         
     })
 
-    child.on('error',(err)=>{
+    child.on('error',async (err)=>{
+        if (finished) return
+        finished=true
+        clearTimeout(timer)
         console.log("error occured: "+err.message)
+        await cleanUp()
         if(!res.headersSent){
         res.json({
             status: "TERMINATED",
@@ -112,6 +133,14 @@ app.post('/exec',async (req,res)=>{
             stderr
         })}
     })
+
+    async function cleanUp() {
+        try {
+            await fs.rm(tempDir, { recursive: true, force: true })
+        } catch (err) {
+            console.error("Cleanup failed:", err)
+        }
+    }
     
     
 })
