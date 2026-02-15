@@ -3,32 +3,66 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Code compiler</title>
+    <title>Secure Code Compiler</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        textarea { width: 100%; font-family: monospace; margin-bottom: 10px; }
+        #code { height: 200px; }
+        #input { height: 80px; }
+        .output-box { background: #f4f4f4; padding: 15px; border-radius: 5px; white-space: pre-wrap; border: 1px solid #ddd; }
+        .error { color: #d32f2f; }
+    </style>
 </head>
 <body>
 
-    <textarea name="" id="code"></textarea>
-    <button onclick="run()">run</button>
+    <h2>Code Editor</h2>
+    
+    <label>Language:</label>
+    <select id="languageSelect">
+        <option value="python">Python</option>
+        <option value="cpp">C++</option>
+        <option value="java">Java</option>
+    </select>
+    <br><br>
+
+    <label>Source Code:</label>
+    <textarea id="code" placeholder="Type your code here...">print(input())</textarea>
+
+    <label>Custom Input (stdin):</label>
+    <textarea id="input" placeholder="Enter input values here (e.g. 10)..."></textarea>
+
+    <button onclick="run()">Run Code</button>
+
+    <h3>Output:</h3>
+    <div id="output" class="output-box">Waiting for code...</div>
 
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script>
+        const outputDiv = document.getElementById("output");
 
-        const el = document.getElementById('code')
-        function run(){
-            axios.post('/exec',{code:el.value})
-            .then((msg)=>{
-                console.log(msg.data)
-                console.log(msg.data.status)
-                console.log("output: "+ msg.data.stdout)
-                console.log("err: "+msg.data.stderr)
+        function run() {
+            const code = document.getElementById('code').value;
+            const input = document.getElementById('input').value;
+            const language = document.getElementById('languageSelect').value;
+            
+            outputDiv.innerText = "Running...";
+            outputDiv.style.color = "black";
+
+            axios.post('/exec', { code, input, language })
+            .then((res) => {
+                const { status, stdout, stderr } = res.data;
+                
+                if (status === "SUCCESS") {
+                    outputDiv.innerText = stdout;
+                } else {
+                    outputDiv.innerHTML = `<span class="error">Status: ${status}</span>\n\n${stderr}\n${stdout}`;
+                }
             })
-            .catch((err)=>{
-                console.log(err)
-            })
+            .catch((err) => {
+                console.error(err);
+                outputDiv.innerText = "Error: Could not connect to server.";
+            });
         }
-        
-
-
     </script>
 </body>
 </html>
