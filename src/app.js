@@ -1,3 +1,4 @@
+import "dotenv/config"
 import os from "os"
 import fs from "fs/promises"
 import express from "express"
@@ -9,7 +10,7 @@ import rateLimit from "express-rate-limit"
 
 const app = express()
 app.set('trust proxy', 1)
-const port = 8000
+const port = process.env.PORT || 8000
 
 
 
@@ -51,7 +52,12 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
     
     const { code, language, input } = req.body;
 
-
+    if (!language || !LANGUAGE_CONFIG[language.toLowerCase()]) {
+        return res.status(400).json({ 
+            status: "ERROR", 
+            stderr: "Please select a valid language." 
+        });
+    }
 
     const config = LANGUAGE_CONFIG[language.toLowerCase()];
     const uniqueId = crypto.randomUUID()
@@ -79,12 +85,12 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
         "-i",                          
         "--rm",                        
         "--network", "none",          
-        "--memory", "128m",            
-        "--cpus", "0.5",               
+        "--memory", process.env.MEMORY_LIMIT,            
+        "--cpus", process.env.CPU_LIMIT,               
         "--pids-limit", "20",          
         "-v", `${tempDir}:/code:rw`,   
         "-w", "/code",                 
-        "code-runner",                
+        process.env.DOCKER_IMAGE,                
         "/bin/sh", "-c", config.command 
     ]
 
@@ -136,5 +142,5 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
 })
 
 app.listen(port, () => {
-    console.log(`Multi-Language Engine listening on port ${port}`)
+    console.log(`Code engine listenign on port${port}`)
 })
