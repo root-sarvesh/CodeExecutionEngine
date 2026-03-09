@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CODE-ENGINE | Online Compiler</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="logo">CODE-ENGINE</div>
+    <ul class="nav-links">
+      <li>
+        <select id="languageSelect">
+          <option value="python">Python</option>
+          <option value="javascript" selected>JavaScript</option>
+          <option value="cpp">C++</option>
+        </select>
+      </li>
+      <li><a href="#">Docs</a></li>
+      <li><a href="#">Home</a></li>
+    </ul>
+  </nav>
+
+  <header class="header">
+    <div id="encryptedText" class="encrypted-title"></div>
+    <button id="runBtn">RUN CODE</button>
+  </header>
+
+  <main class="main-container" id="mainContainer">
+    <section class="left-panel" id="editor-container"></section>
+
+    <div class="resizer" id="resizer"></div>
+
+    <section class="right-panel" id="rightPanel">
+      <div class="panel-section">
+        <h4>Input</h4>
+        <textarea class="terminal-input" id="customInput" placeholder="Standard input..."></textarea>
+      </div>
+      <div class="panel-section output-container">
+        <h4>Output</h4>
+        <div id="output">System ready...</div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="status-dot"></span> Status: Connected
+  </footer>
+
+ <script type="module">
+    import { EditorView, basicSetup } from "https://esm.sh/codemirror";
+    import { EditorState, Compartment } from "https://esm.sh/@codemirror/state";
+    import { javascript } from "https://esm.sh/@codemirror/lang-javascript";
+    import { python } from "https://esm.sh/@codemirror/lang-python";
+    import { cpp } from "https://esm.sh/@codemirror/lang-cpp";
+    import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
+
+    document.addEventListener("DOMContentLoaded", () => {
+      
+      const editorContainer = document.getElementById("editor-container");
+      const langSelect = document.getElementById("languageSelect");
+      const resizer = document.getElementById("resizer");
+      const mainContainer = document.getElementById("mainContainer");
+      const encryptedText = document.getElementById("encryptedText");
+      const outputElement = document.getElementById("output");
+      
+      const languageConf = new Compartment();
+      const languages = {
+        javascript: javascript(),
+        python: python(),
+        cpp: cpp()
+      };
+
+      const codeTemplates = {
+        javascript: "console.log('Hello from JavaScript!');",
+        python: "print('Hello from Python!')",
+        cpp: "#include <iostream>\n\nint main() {\n    std::cout << \"Hello from C++!\";\n    return 0;\n}"
+      };
+
+      // 1. Initialize CodeMirror
+      const startState = EditorState.create({
+        doc: codeTemplates.javascript,
+        extensions: [
+          basicSetup,
+          oneDark,
+          languageConf.of(languages.javascript)
+        ]
+      });
+
+      const view = new EditorView({
+        state: startState,
+        parent: editorContainer
+      });
+
+      // 2. Encrypted Header Animation
+      const titleText = "| WELCOME TO CODE-ENGINE |";
+      const charPool = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%&*";
+      let revealIndex = 0;
+
+      function animateHeader() {
+        if (revealIndex <= titleText.length) {
+          let current = titleText.substring(0, revealIndex);
+          for (let i = revealIndex; i < titleText.length; i++) {
+            current += charPool[Math.floor(Math.random() * charPool.length)];
+          }
+          encryptedText.textContent = current;
+          revealIndex++;
+          setTimeout(animateHeader, 50);
+        }
+      }
+      animateHeader();
+
+      // 3. Language Switcher Logic
+      langSelect.addEventListener("change", () => {
+        const selection = langSelect.value;
+        view.dispatch({
+          effects: languageConf.reconfigure(languages[selection]),
+          changes: { from: 0, to: view.state.doc.length, insert: codeTemplates[selection] }
+        });
+      });
+
+      // 4. Resizable Layout Logic
+      let isResizing = false;
+
+      resizer.addEventListener("mousedown", (e) => {
+        isResizing = true;
+        document.body.style.cursor = "col-resize";
+        mainContainer.style.userSelect = "none";
+      });
+
+      document.addEventListener("mousemove", (e) => {
+        if (!isResizing) return;
+        let containerWidth = mainContainer.offsetWidth;
+        let newWidthPercent = (e.clientX / containerWidth) * 100;
+        if (newWidthPercent > 15 && newWidthPercent < 85) {
+          editorContainer.style.width = `${newWidthPercent}%`;
+        }
+      });
+
+      document.addEventListener("mouseup", () => {
+        isResizing = false;
+        document.body.style.cursor = "default";
+        mainContainer.style.userSelect = "auto";
+      });
+
+      // 5. Run Button Action
+      document.getElementById("runBtn").addEventListener("click", async () => {
+    const code = view.state.doc.toString();
+    const language = langSelect.value;
+    const customInput = document.getElementById("customInput").value;
+    
+    outputElement.textContent = "Running...";
+    outputElement.style.color = "#38bdf8";
+
+    try {
+        // Change this line in your index.html
+          // Change your fetch line to this:
+        const response = await fetch('http://localhost:8000/exec', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, language, input: customInput })
+        });
+
+        // DEBUG: See what the server actually sent back
+        const contentType = response.headers.get("content-type");
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Server raw error:", errorText);
+            outputElement.textContent = `Server Error (${response.status}): Check Console`;
+            outputElement.style.color = "#ef4444";
+            return;
+        }
+
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            const result = await response.json();
+            if (result.error) {
+                outputElement.textContent = result.error;
+                outputElement.style.color = "#ef4444"; 
+            } else {
+                outputElement.textContent = result.output || "Program executed (no output).";
+                outputElement.style.color = "#10b981";
+            }
+        } else {
+            const rawText = await response.text();
+            outputElement.textContent = "Received non-JSON response: " + rawText.substring(0, 50);
+        }
+
+    } catch (err) {
+        outputElement.textContent = "Connection Error: " + err.message;
+        outputElement.style.color = "#ef4444";
+        console.error("Fetch error:", err);
+    }
+  });
+});
+  </script>
+</body>
+</html>

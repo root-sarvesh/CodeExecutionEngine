@@ -1,0 +1,205 @@
+:root {
+  --bg-main: #020617;
+  --bg-panel: #0f172a;
+  --accent: #38bdf8;
+  --border: #1e293b;
+  --text-primary: #f8fafc;
+  --text-muted: #64748b;
+  --terminal-green: #10b981;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Tahoma, sans-serif; }
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Navbar */
+.navbar {
+  height: 55px;
+  background-color: #010409;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 25px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo { font-weight: 800; color: var(--accent); letter-spacing: 1px; }
+.nav-links { list-style: none; display: flex; align-items: center; gap: 20px; }
+.nav-links a { text-decoration: none; color: var(--text-muted); font-size: 14px; transition: 0.2s; }
+.nav-links a:hover { color: var(--accent); }
+
+#languageSelect {
+  background: var(--bg-panel);
+  color: white;
+  border: 1px solid var(--border);
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Header */
+.header {
+  height: 50px;
+  background-color: var(--bg-panel);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+#encryptedText { font-family: 'Courier New', monospace; font-size: 0.95rem; color: var(--accent); font-weight: bold; }
+
+#runBtn {
+  background-color: var(--accent);
+  color: #020617;
+  border: none;
+  padding: 7px 20px;
+  font-weight: 700;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+#runBtn:hover { background-color: #7dd3fc; transform: scale(1.02); }
+
+/* Main Workspace */
+.main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+.left-panel {
+  width: 65%; /* Initial width */
+  min-width: 200px;
+  display: flex;
+  background-color: #010409;
+}
+
+.resizer {
+  width: 4px;
+  cursor: col-resize;
+  background-color: var(--border);
+  transition: background-color 0.2s;
+}
+
+.resizer:hover { background-color: var(--accent); }
+
+.right-panel {
+  flex: 1;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-main);
+  border-left: 1px solid var(--border);
+}
+
+/* Editor Styling */
+.line-numbers {
+  width: 45px;
+  padding: 15px 5px;
+  text-align: right;
+  color: #334155;
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+  background: #010409;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  user-select: none;
+}
+
+#codeEditor {
+  flex: 1;
+  background: transparent;
+  color: #e2e8f0;
+  border: none;
+  outline: none;
+  resize: none;
+  padding: 15px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Input/Output Sections */
+.panel-section { flex: 1; display: flex; flex-direction: column; padding: 15px; }
+.output-container { border-top: 1px solid var(--border); }
+h4 { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; letter-spacing: 1px; }
+
+.terminal-input {
+  flex: 1;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: white;
+  padding: 10px;
+  resize: none;
+  outline: none;
+  border-radius: 4px;
+}
+
+#output {
+  flex: 1;
+  background: #000;
+  border: 1px solid var(--border);
+  padding: 10px;
+  color: var(--terminal-green);
+  font-family: 'Consolas', monospace;
+  font-size: 14px;
+  overflow-y: auto;
+  border-radius: 4px;
+  white-space: pre-wrap;
+}
+
+/* Footer */
+.footer {
+  height: 30px;
+  background: #010409;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 15px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--terminal-green);
+  border-radius: 50%;
+  margin-right: 8px;
+  box-shadow: 0 0 5px var(--terminal-green);
+}
+
+/* Add this to your style.css */
+.left-panel {
+  width: 65%; /* This is controlled by the JS resizer now */
+  min-width: 200px;
+  background-color: #05255d;
+  display: flex;
+  overflow: hidden;
+}
+
+.cm-editor {
+  height: 100%;
+  width: 100%;
+  outline: none !important;
+}
+
+/* Optional: Make the scrollbar look better in the editor */
+.cm-scroller::-webkit-scrollbar {
+  width: 8px;
+}
+.cm-scroller::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 10px;
+}
