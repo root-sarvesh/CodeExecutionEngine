@@ -1,10 +1,18 @@
-FROM node:22
+FROM debian:bullseye-slim
 
-WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+RUN apt-get update && \
+    apt-get install -y python3 g++ default-jdk && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY . .
 
-CMD ["npm", "start"]
+RUN useradd -m -s /bin/bash sandbox_user
+
+
+WORKDIR /code
+
+
+USER sandbox_user
+
+CMD ["bash"]
