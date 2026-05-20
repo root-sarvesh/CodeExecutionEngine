@@ -5,20 +5,22 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import cors from "cors";
-import crypto from "crypto"; // Required for crypto.randomUUID()
-import rateLimit from "express-rate-limit"; // Ensure you run: npm install express-rate-limit
+import crypto from "crypto"; 
+import rateLimit from "express-rate-limit"; 
 
 const app = express();
 const port = process.env.PORT || 8000;
 
-// Setup path variables for ES modules
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Middleware
+const MAX_OUTPUT_BUFFER = 1024 * 1024; 
+const TIMEOUT_MS = 6000;               
+
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Language configurations
@@ -43,124 +45,195 @@ const LANGUAGE_CONFIG = {
 
 // Rate limiting to prevent abuse
 const codeExecutionLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 10,                 // 10 requests per minute
+    windowMs: 1 * 60 * 1000, 
+    max: 10,                 
     message: {
         status: "TOO_MANY_REQUESTS",
         stderr: "You are running code too fast. Please wait a minute."
     }
 });
 
-// Code execution endpoint
-app.post('/exec', codeExecutionLimiter, async (req, res) => {
-    const { code, language, input } = req.body;
-
-    // Validate Language
-    if (!language || !LANGUAGE_CONFIG[language.toLowerCase()]) {
-        return res.status(400).json({ 
-            status: "ERROR", 
-            stderr: "Please select a valid language." 
-        });
+class ExecutionQueue {
+    constructor() {
+        this.queue = [];
+        this.isProcessing = false;
     }
 
-    const config = LANGUAGE_CONFIG[language.toLowerCase()];
-    const uniqueId = crypto.randomUUID();
-    const tempDir = path.join(os.tmpdir(), `exec-${uniqueId}`);
-    const containerName = `box_${crypto.randomUUID()}`
-    const filepath = path.join(tempDir, config.fileName);
-
-    // Helper to clean up temporary files
-    async function cleanUp() {
-        try { 
-            await fs.rm(tempDir, { recursive: true, force: true });
-        } catch (e) { 
-            console.error("Cleanup failed:", e);
-        }
+    enqueue(task) {
+        this.queue.push(task);
+        this.process();
     }
 
-    // Write code to a temporary directory
-    try {
-        await fs.mkdir(tempDir, { recursive: true });
-        await fs.chmod(tempDir, 0o777); 
-        await fs.writeFile(filepath, code || "", "utf-8");
-        await fs.chmod(filepath, 0o777);
-    } catch(e) {
-        await cleanUp();
-        return res.status(500).json({ status: "ERROR", stderr: "Server file error" });
-    }
-    
-    // Set up Docker arguments with fallbacks for env variables
-    const memLimit = process.env.MEMORY_LIMIT || "256m";
-    const cpuLimit = process.env.CPU_LIMIT || "0.5";
-    const dockerImage = process.env.DOCKER_IMAGE || "code-runner"; 
-
-    const dockerArgs = [
-        "run",
-        "--name",containerName,
-        "-i",                          // Interactive (keep STDIN open even if not attached)
-        "--rm",                        // Remove container when it exits
-        "--network", "none",           // Disable networking for security
-        "--memory", memLimit,          // Limit memory
-        "--cpus", cpuLimit,            // Limit CPU
-        "--pids-limit", "20",          // Prevent fork bombs
-        "-v", `${tempDir}:/code:rw`,   // Mount the temp directory
-        "-w", "/code",                 // Set working directory
-        dockerImage,                   // The Docker image to use
-        "/bin/sh", "-c", config.command 
-    ];
-
-    let finished = false;
-    let stdout = '';
-    let stderr = '';    
-
-    const child = spawn("docker", dockerArgs);
-
-    // Feed standard input if provided
-    if (input) {
-        child.stdin.write(input); 
-    }
-    child.stdin.end();
-
-    // 10-Second Timeout
-    const timer = setTimeout(async () => {
-        if (finished) return; 
-        finished = true;
-        spawn("docker",["rm","-f",containerName])
-        child.kill("SIGKILL");
-        await cleanUp();
-        if (!res.headersSent) {
-            res.json({ status: "TIME_LIMIT_EXCEEDED", stdout, stderr });
-        }
-    }, 6000);
-
-    // Collect Output
-    child.stdout.on('data', (data) => { stdout += data.toString(); });
-    child.stderr.on('data', (data) => { stderr += data.toString(); });
-    console.log(stdout)
-    console.log(stderr)
-    // Handle process completion
-    child.on('close', async (exitCode) => {
-        if (finished) return;
-        finished = true; 
-        clearTimeout(timer);
-        await cleanUp();
+    async process() {
+        if (this.isProcessing || this.queue.length === 0) return;
+        this.isProcessing = true;
         
-        res.json({
-            status: exitCode === 0 ? "SUCCESS" : "ERROR",
-            stdout,
-            stderr
-        });
-    });
-
-    // Handle spawn errors
-    child.on('error', async (err) => {
-        if (finished) return;
-        finished = true;
-        clearTimeout(timer);
-        await cleanUp();
-        if (!res.headersSent) {
-            res.status(500).json({ status: "INTERNAL_ERROR", stderr: err.message });
+        while (this.queue.length > 0) {
+            const task = this.queue.shift();
+            try {
+                await task(); // Wait for the current code execution to completely finish
+            } catch (err) {
+                console.error("Queue task error:", err);
+            }
         }
+        
+        this.isProcessing = false;
+    }
+}
+const jobQueue = new ExecutionQueue();
+// ------------------------------------------
+
+// Code execution endpoint
+app.post('/exec', codeExecutionLimiter, (req, res) => {
+    
+    // Add the execution request to the queue
+    jobQueue.enqueue(() => {
+        return new Promise(async (resolve) => {
+            
+            // Check if user disconnected while waiting in queue
+            if (req.socket.destroyed) {
+                return resolve(); 
+            }
+
+            const { code, language, input } = req.body;
+
+            // Validate Language
+            if (!language || !LANGUAGE_CONFIG[language.toLowerCase()]) {
+                res.status(400).json({ status: "ERROR", stderr: "Please select a valid language." });
+                return resolve();
+            }
+
+            const config = LANGUAGE_CONFIG[language.toLowerCase()];
+            const uniqueId = crypto.randomUUID();
+            const tempDir = path.join(os.tmpdir(), `exec-${uniqueId}`);
+            const containerName = `box_${uniqueId}`;
+            const filepath = path.join(tempDir, config.fileName);
+
+            // Helper to clean up temporary files
+            async function cleanUp() {
+                try { 
+                    await fs.rm(tempDir, { recursive: true, force: true });
+                } catch (e) { 
+                    console.error("Cleanup failed:", e);
+                }
+            }
+
+            // Write code to a temporary directory
+            try {
+                await fs.mkdir(tempDir, { recursive: true });
+                await fs.chmod(tempDir, 0o777); 
+                await fs.writeFile(filepath, code || "", "utf-8");
+                await fs.chmod(filepath, 0o777);
+            } catch(e) {
+                await cleanUp();
+                res.status(500).json({ status: "ERROR", stderr: "Server file error" });
+                return resolve();
+            }
+            
+            const memLimit = process.env.MEMORY_LIMIT || "256m";
+            const cpuLimit = process.env.CPU_LIMIT || "0.5";
+            const dockerImage = process.env.DOCKER_IMAGE || "code-runner"; 
+
+            const dockerArgs = [
+                "run",
+                "--name", containerName,
+                "-i",                          
+                "--rm",                        
+                "--network", "none",           
+                "--memory", memLimit,          
+                "--cpus", cpuLimit,            
+                "--pids-limit", "20",          
+                "-v", `${tempDir}:/code:rw`,   
+                "-w", "/code",                 
+                dockerImage,                   
+                "/bin/sh", "-c", config.command 
+            ];
+
+            let finished = false;
+            let stdout = '';
+            let stderr = '';    
+            let timer = null;
+
+            const cleanAndKill = () => {
+                if (finished) return;
+                finished = true;
+                
+                if (timer) clearTimeout(timer);
+                
+                // Spawn a detached process to ensure the container is wiped out
+                const killer = spawn("docker", ["rm", "-f", containerName]);
+                killer.on('error', () => {}); // Ignore killer errors
+                
+                child.kill("SIGKILL");
+                cleanUp(); 
+            };
+
+            const handleOutput = (data, streamType) => {
+                if (finished) return;
+                
+                const text = data.toString();
+                if (streamType === 'stdout') stdout += text;
+                if (streamType === 'stderr') stderr += text;
+
+                // OOM Crash Prevention
+                if (stdout.length + stderr.length > MAX_OUTPUT_BUFFER) {
+                    stderr += "\n[Error: Output exceeded maximum limit of 1MB]";
+                    cleanAndKill();
+                    if (!res.headersSent) {
+                        res.json({ status: "OUTPUT_LIMIT_EXCEEDED", stdout, stderr });
+                    }
+                    resolve(); // Move to next job in queue
+                }
+            };
+
+            const child = spawn("docker", dockerArgs);
+
+            // Feed standard input if provided
+            if (input) {
+                child.stdin.write(input); 
+            }
+            child.stdin.end();
+
+            // Timeout Handler
+            timer = setTimeout(() => {
+                if (finished) return; 
+                cleanAndKill();
+                if (!res.headersSent) {
+                    res.json({ status: "TIME_LIMIT_EXCEEDED", stdout, stderr });
+                }
+                resolve(); // Move to next job in queue
+            }, TIMEOUT_MS);
+
+            // Collect Output using the safe handler
+            child.stdout.on('data', (data) => handleOutput(data, 'stdout'));
+            child.stderr.on('data', (data) => handleOutput(data, 'stderr'));
+
+            // Handle process completion
+            child.on('close', (exitCode) => {
+                if (finished) return;
+                cleanAndKill();
+                
+                if (!res.headersSent) {
+                    res.json({
+                        status: exitCode === 0 ? "SUCCESS" : "ERROR",
+                        stdout,
+                        stderr
+                    });
+                }
+                resolve(); // Move to next job in queue
+            });
+
+            // Handle spawn errors
+            child.on('error', (err) => {
+                if (finished) return;
+                cleanAndKill();
+                
+                if (!res.headersSent) {
+                    res.status(500).json({ status: "INTERNAL_ERROR", stderr: err.message });
+                }
+                resolve(); // Move to next job in queue
+            });
+        });
     });
 });
 
