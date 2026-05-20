@@ -66,6 +66,7 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
     const config = LANGUAGE_CONFIG[language.toLowerCase()];
     const uniqueId = crypto.randomUUID();
     const tempDir = path.join(os.tmpdir(), `exec-${uniqueId}`);
+    const containerName = `box_${crypto.randomUUID()}`
     const filepath = path.join(tempDir, config.fileName);
 
     // Helper to clean up temporary files
@@ -95,6 +96,7 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
 
     const dockerArgs = [
         "run",
+        "--name",containerName,
         "-i",                          // Interactive (keep STDIN open even if not attached)
         "--rm",                        // Remove container when it exits
         "--network", "none",           // Disable networking for security
@@ -123,6 +125,7 @@ app.post('/exec', codeExecutionLimiter, async (req, res) => {
     const timer = setTimeout(async () => {
         if (finished) return; 
         finished = true;
+        spawn("docker",["rm","-f",containerName])
         child.kill("SIGKILL");
         await cleanUp();
         if (!res.headersSent) {
